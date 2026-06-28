@@ -5,6 +5,7 @@ import { useStore } from '@nanostores/react'
 import { createContext, type FC, type PropsWithChildren, type ReactNode, useContext, useEffect, useMemo } from 'react'
 
 import { AnsiText } from '@/components/assistant-ui/ansi-text'
+import { TerminalView } from '@/components/chat/terminal-view'
 import { useElapsedSeconds } from '@/components/chat/activity-timer'
 import { ActivityTimerText } from '@/components/chat/activity-timer-text'
 import { CompactMarkdown } from '@/components/chat/compact-markdown'
@@ -276,6 +277,24 @@ function ToolEntry({ part }: ToolEntryProps) {
   const isFileEdit = isFileEditTool(toolName)
   const defaultOpen = Boolean(inlineDiff)
   const open = useDisclosureOpen(disclosureId, defaultOpen)
+  const isTerminal = toolName === 'terminal' || toolName === 'execute_code'
+  // Terminal tools are always expanded (no collapse) so the output is
+  // immediately visible. The DisclosureRow chrome (glyph, title, timer,
+  // dismiss) still wraps the block for behavioural consistency.
+  const terminalOpen = isTerminal || open
+  const terminalCommand = useMemo(() => {
+    if (!isTerminal) return ''
+    const obj = typeof args === 'object' && args ? (args as Record<string, unknown>) : {}
+
+    return String(obj.command ?? obj.code ?? '')
+  }, [args, isTerminal])
+  const terminalExitCode = useMemo(() => {
+    if (!isTerminal) return undefined
+    const obj = typeof result === 'object' && result ? (result as Record<string, unknown>) : {}
+    const code = obj.exit_code
+
+    return typeof code === 'number' ? code : undefined
+  }, [isTerminal, result])
   const canDismiss = !isPending && !embedded
   // Only animate entries that mount while their message is actively
   // streaming — historical sessions mount with `messageRunning === false`,
@@ -346,7 +365,7 @@ function ToolEntry({ part }: ToolEntryProps) {
 
   const renderDetailAsCode =
     view.status !== 'error' &&
-    (part.toolName === 'terminal' || part.toolName === 'execute_code' || part.toolName === 'read_file')
+    part.toolName === 'read_file'
 
   const hasSearchHits = Boolean(view.searchHits?.length)
   const searchResultsLabel = part.toolName === 'web_search' ? 'Search results' : view.detailLabel
@@ -390,7 +409,7 @@ function ToolEntry({ part }: ToolEntryProps) {
         aria-label={statusCopy.dismiss}
         className={cn(
           'size-5 rounded-md text-(--ui-text-tertiary) transition-opacity hover:text-(--ui-text-primary) hover:opacity-100',
-          open
+          terminalOpen
             ? 'opacity-80'
             : 'opacity-0 group-hover/disclosure-row:opacity-80 group-focus-within/disclosure-row:opacity-80'
         )}
@@ -424,18 +443,24 @@ function ToolEntry({ part }: ToolEntryProps) {
     <div
       className={cn(
         'group/tool-block min-w-0 max-w-full overflow-hidden text-[length:var(--conversation-tool-font-size)] text-(--ui-text-tertiary)',
-        open && TOOL_EXPANDED_SHELL_CLASS
+        terminalOpen && TOOL_EXPANDED_SHELL_CLASS
       )}
-      data-file-edit={isFileEdit && open ? '' : undefined}
+      data-file-edit={isFileEdit && terminalOpen ? '' : undefined}
       data-slot="tool-block"
       data-tool-row=""
       ref={enterRef}
     >
-      <div className={cn(open && 'border-b border-(--ui-stroke-tertiary) px-2 py-1.5')}>
+      <div className={cn(terminalOpen && 'border-b border-(--ui-stroke-tertiary) px-2 py-1.5')}>
         <DisclosureRow
           action={dismissAction}
-          onToggle={hasExpandableContent ? () => setToolDisclosureOpen(disclosureId, !open) : undefined}
-          open={open}
+          onToggle={
+            isTerminal
+              ? undefined
+              : hasExpandableContent
+                ? () => setToolDisclosureOpen(disclosureId, !terminalOpen)
+                : undefined
+          }
+          open={terminalOpen}
           trailing={trailing}
         >
           <span
@@ -467,9 +492,11 @@ function ToolEntry({ part }: ToolEntryProps) {
         </DisclosureRow>
       </div>
       {isPending && <PendingToolApproval part={part} />}
-      {open && (
+      {terminalOpen && (
         <div className="relative grid w-full min-w-0 max-w-full gap-1.5 overflow-hidden p-1.5">
-          {copyAction.text && (
+          {/* Only the tool-level CopyButton for non-terminal tools —
+              TerminalView has its own copy button inside the terminal box. */}
+          {!isTerminal && copyAction.text && (
             <CopyButton
               appearance="inline"
               className="absolute right-1.5 top-1.5 z-10 h-5 gap-0 rounded-md px-1 opacity-5 transition-opacity group-hover/tool-block:opacity-100 hover:opacity-100 focus-visible:opacity-100"
@@ -494,8 +521,21 @@ function ToolEntry({ part }: ToolEntryProps) {
           {view.inlineDiff && (
             <FileDiffPanel className="-mt-1.5" diff={view.inlineDiff} path={isFileEdit ? view.subtitle : undefined} />
           )}
+          {/* Terminal/execute_code tools render as a dedicated terminal view */}
+          {isTerminal && (
+            <TerminalView
+              command={terminalCommand}
+              copyText={copyAction.text || view.detail}
+              exitCode={terminalExitCode}
+              output={view.detail}
+              stderr={view.stderr}
+              stdout={view.stdout}
+              toolName={part.toolName as 'terminal' | 'execute_code'}
+            />
+          )}
           {showDetail &&
             toolViewMode !== 'technical' &&
+            !isTerminal &&
             (view.status === 'error' ? (
               detailSections.summary || detailSections.body ? (
                 <div className="max-w-full text-xs leading-relaxed text-destructive">

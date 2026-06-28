@@ -37,6 +37,9 @@ export interface ToolView {
   detail: string
   detailLabel: string
   durationLabel?: string
+  /** Process exit code for terminal/execute_code tools. Undefined for
+   *  other tool types. */
+  exitCode?: number
   icon?: string
   imageUrl?: string
   inlineDiff: string
@@ -1671,12 +1674,14 @@ export function buildToolView(part: ToolPart, inlineDiff: string): ToolView {
   // field — otherwise the merged `detail` already covers it and double-
   // rendering would duplicate output.
   const hasSplitStreams = rendersAnsi && (Boolean(stdout) || Boolean(stderrRaw))
+  const exitCode = rendersAnsi ? (numberValue(resultRecord.exit_code) ?? undefined) : undefined
 
   return {
     countLabel: resultCount ? formatCountLabel(resultCount) : undefined,
     detail,
     detailLabel: error ? 'Error details' : toolDetailLabel(part.toolName),
     durationLabel: durationLabel(resultRecord),
+    exitCode,
     icon: meta.icon,
     imageUrl: toolImageUrl(argsRecord, resultRecord),
     inlineDiff,
