@@ -288,13 +288,6 @@ function ToolEntry({ part }: ToolEntryProps) {
 
     return String(obj.command ?? obj.code ?? '')
   }, [args, isTerminal])
-  const terminalExitCode = useMemo(() => {
-    if (!isTerminal) return undefined
-    const obj = typeof result === 'object' && result ? (result as Record<string, unknown>) : {}
-    const code = obj.exit_code
-
-    return typeof code === 'number' ? code : undefined
-  }, [isTerminal, result])
   const canDismiss = !isPending && !embedded
   // Only animate entries that mount while their message is actively
   // streaming — historical sessions mount with `messageRunning === false`,
@@ -526,7 +519,7 @@ function ToolEntry({ part }: ToolEntryProps) {
             <TerminalView
               command={terminalCommand}
               copyText={copyAction.text || view.detail}
-              exitCode={terminalExitCode}
+              exitCode={view.exitCode}
               output={view.detail}
               stderr={view.stderr}
               stdout={view.stdout}
